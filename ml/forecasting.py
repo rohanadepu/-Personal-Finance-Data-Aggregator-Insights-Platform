@@ -4,6 +4,14 @@ import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_percentage_error
 from datetime import datetime, timedelta
+import os
+
+# Configure MLflow
+os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://minio:9000'
+os.environ['AWS_ACCESS_KEY_ID'] = 'minioadmin'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'minioadmin'
+mlflow.set_tracking_uri("http://mlflow:5000")
+mlflow.set_experiment("transaction_forecasting")
 
 def prepare_forecast_data(df):
     # Aggregate daily cash flow
@@ -38,8 +46,12 @@ def train_forecast_model(df, forecast_periods=30):
         for metric_name, value in train_metrics.items():
             mlflow.log_metric(f"train_{metric_name}", value)
         
-        # Log model
-        mlflow.prophet.log_model(model, "prophet_model")
+        # Log model to MinIO mlflow bucket
+        mlflow.prophet.log_model(
+            model, 
+            "prophet_model",
+            artifact_path="s3://mlflow/models/prophet"
+        )
         
         return model, forecast
 

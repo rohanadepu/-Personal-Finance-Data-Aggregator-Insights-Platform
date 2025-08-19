@@ -10,14 +10,16 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key-here
+      - AIRFLOW__WEBSERVER__WORKERS=2
+      - AIRFLOW_HOME=/opt/airflow
+      - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
     volumes:
       - ../../airflow/dags:/opt/airflow/dags
       - ../../spark_jobs:/opt/airflow/spark_jobs
-      - ../../sql:/opt/airflow/sql
       - ../../data:/opt/airflow/data
       - ../../ml:/opt/airflow/ml
       - airflow_logs:/opt/airflow/logs
-    user: "${AIRFLOW_UID:-50000}"
+    user: "${AIRFLOW_UID:-50000}:0"
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,7 +38,6 @@ services:
     volumes:
       - ../../airflow/dags:/opt/airflow/dags
       - ../../spark_jobs:/opt/airflow/spark_jobs
-      - ../../sql:/opt/airflow/sql
       - ../../data:/opt/airflow/data
       - ../../ml:/opt/airflow/ml
       - airflow_logs:/opt/airflow/logs

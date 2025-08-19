@@ -1,14 +1,23 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, regexp_replace, to_timestamp
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import col, when, regexp_replace, to_timestamp, count
 from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml import Pipeline
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def create_spark_session():
     return SparkSession.builder \
         .appName("TransactionProcessing") \
-        .config("spark.sql.warehouse.dir", "/data/warehouse") \
-        .config("spark.executor.memory", "2g") \
+        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.1") \
+        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
+        .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \
+        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin") \
+        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
 
 def clean_transactions(df):
@@ -64,26 +73,39 @@ def detect_recurring_transactions(df):
             .withColumn("is_recurring", col("transaction_count") >= 2)
 
 def main():
-    # Initialize Spark session
+    logger.info("Starting transaction transformation process")
     spark = create_spark_session()
     
-    # Read raw transactions
-    raw_df = spark.read.csv(
-        "/data/raw/transactions/",
-        header=True,
-        inferSchema=True
-    )
-    
-    # Process transactions
-    processed_df = raw_df.transform(clean_transactions) \
-                        .transform(categorize_transactions) \
-                        .transform(detect_recurring_transactions)
-    
-    # Write processed data
-    processed_df.write \
-        .mode("overwrite") \
-        .partitionBy("year", "month") \
-        .parquet("/data/curated/transactions/")
+    try:
+        # Read raw transactions from MinIO raw bucket
+        logger.info("Reading data from raw bucket")
+        raw_df = spark.read.parquet("s3a://raw/transactions/processed")
+        logger.info(f"Read {raw_df.count()} transactions from raw bucket")
+        
+        # Process transactions
+        logger.info("Starting data transformation")
+        processed_df = raw_df.transform(clean_transactions)
+        logger.info("Completed data cleaning")
+        
+        processed_df = processed_df.transform(categorize_transactions)
+        logger.info("Completed transaction categorization")
+        
+        processed_df = processed_df.transform(detect_recurring_transactions)
+        logger.info("Completed recurring transaction detection")
+        
+        # Write processed data to MinIO curated bucket
+        logger.info("Writing processed data to curated bucket")
+        processed_df.write \
+            .mode("overwrite") \
+            .partitionBy("year", "month") \
+            .parquet("s3a://curated/transactions")
+        logger.info("Successfully wrote processed data to curated bucket")
+
+    except Exception as e:
+        logger.error(f"Error processing transactions: {str(e)}")
+        raise
+    finally:
+        spark.stop()
 
 if __name__ == "__main__":
     main()

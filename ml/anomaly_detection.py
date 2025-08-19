@@ -4,6 +4,15 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime, timedelta
+import os
+import joblib
+
+# Configure MLflow
+os.environ['MLFLOW_S3_ENDPOINT_URL'] = 'http://minio:9000'
+os.environ['AWS_ACCESS_KEY_ID'] = 'minioadmin'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'minioadmin'
+mlflow.set_tracking_uri("http://mlflow:5000")
+mlflow.set_experiment("transaction_anomaly_detection")
 
 def prepare_features(df):
     # Group by category and date to get daily spending
@@ -26,9 +35,18 @@ def train_anomaly_detector(features_df, contamination=0.1):
         mlflow.log_param("contamination", contamination)
         model.fit(scaled_features)
         
+        # Save scaler to MinIO mlflow bucket
+        scaler_path = "scaler.pkl"
+        joblib.dump(scaler, scaler_path)
+        mlflow.log_artifact(scaler_path, artifact_path="s3://mlflow/models/anomaly_detection")
+        os.remove(scaler_path)
+        
         # Log the model
-        mlflow.sklearn.log_model(model, "isolation_forest_model")
-        mlflow.log_artifact("scaler.pkl")
+        mlflow.sklearn.log_model(
+            model, 
+            "isolation_forest_model",
+            artifact_path="s3://mlflow/models/anomaly_detection"
+        )
         
         # Calculate and log metrics
         predictions = model.predict(scaled_features)
