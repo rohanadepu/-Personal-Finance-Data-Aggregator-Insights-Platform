@@ -1,0 +1,47 @@
+config_version: 3.0
+datasources:
+  raw_transactions:
+    module_name: great_expectations.datasource
+    class_name: PandasDatasource
+    data_asset_type:
+      module_name: great_expectations.dataset
+      class_name: PandasDataset
+    batch_kwargs_generators:
+      default:
+        class_name: SubdirReaderBatchKwargsGenerator
+        base_directory: /data/raw/transactions
+
+  curated_transactions:
+    module_name: great_expectations.datasource
+    class_name: SparkDFDatasource
+    data_asset_type:
+      module_name: great_expectations.dataset
+      class_name: SparkDFDataset
+    batch_kwargs_generators:
+      default:
+        class_name: SubdirReaderBatchKwargsGenerator
+        base_directory: /data/curated/transactions
+
+stores:
+  expectation_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: expectations/
+
+  validation_store:
+    class_name: ValidationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: validations/
+
+  metric_store:
+    class_name: MetricStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: metrics/
+
+evaluation_parameter_store_name: evaluation_parameter_store
+validations_store_name: validation_store
+expectations_store_name: expectation_store
+config_variables_file_path: great_expectations_variables.yml

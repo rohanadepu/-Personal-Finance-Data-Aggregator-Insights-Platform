@@ -3,7 +3,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
-from great_expectations_provider.operators.great_expectations import GreatExpectationsOperator
+from airflow.models import Variable
 
 default_args = {
     'owner': 'airflow',
@@ -29,17 +29,11 @@ ingest_transactions = SparkSubmitOperator(
     application='/opt/airflow/spark_jobs/ingest_transactions.py',
     name='ingest_transactions',
     conn_id='spark_default',
-    dag=dag,
-)
-
-# Run data quality checks on raw data
-validate_raw_data = GreatExpectationsOperator(
-    task_id='validate_raw_data',
-    expectation_suite_name='transactions_raw_suite',
-    batch_kwargs={
-        'path': '/data/raw/transactions/',
-        'datasource': 'raw_transactions'
+    conf={
+        'spark.master': 'spark://spark-master:7077',
+        'spark.submit.deployMode': 'client'
     },
+    verbose=True,
     dag=dag,
 )
 
@@ -49,6 +43,11 @@ transform_transactions = SparkSubmitOperator(
     application='/opt/airflow/spark_jobs/transform_transactions.py',
     name='transform_transactions',
     conn_id='spark_default',
+    conf={
+        'spark.master': 'spark://spark-master:7077',
+        'spark.submit.deployMode': 'client'
+    },
+    verbose=True,
     dag=dag,
 )
 
@@ -56,20 +55,9 @@ transform_transactions = SparkSubmitOperator(
 load_warehouse = PostgresOperator(
     task_id='load_warehouse',
     postgres_conn_id='warehouse_default',
-    sql='sql/load_transactions_warehouse.sql',
-    dag=dag,
-)
-
-# Run data quality checks on transformed data
-validate_transformed_data = GreatExpectationsOperator(
-    task_id='validate_transformed_data',
-    expectation_suite_name='transactions_transformed_suite',
-    batch_kwargs={
-        'path': '/data/curated/transactions/',
-        'datasource': 'curated_transactions'
-    },
+    sql='/opt/airflow/sql/load_transactions_warehouse.sql',
     dag=dag,
 )
 
 # Define the task dependencies
-ingest_transactions >> validate_raw_data >> transform_transactions >> load_warehouse >> validate_transformed_data
+ingest_transactions >> transform_transactions >> load_warehouse

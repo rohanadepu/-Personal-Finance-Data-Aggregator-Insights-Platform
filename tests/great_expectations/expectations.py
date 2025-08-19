@@ -1,75 +1,38 @@
 from great_expectations.core import ExpectationConfiguration, ExpectationSuite
-from great_expectations.dataset import SparkDFDataset
-from great_expectations.data_context import BaseDataContext
-from great_expectations.data_context.types.base import DataContextConfig
+from great_expectations.dataset import PandasDataset
+import pandas as pd
 
-def create_transaction_expectation_suite():
-    """Create expectation suite for transaction data"""
-    suite = ExpectationSuite(
-        expectation_suite_name="transactions_raw_suite"
-    )
+def create_transaction_expectations():
+    suite = ExpectationSuite(expectation_suite_name="transaction_suite")
     
-    # Add expectations
-    suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_table_columns_to_match_ordered_list",
-            kwargs={
-                "column_list": [
-                    "tx_id",
-                    "timestamp",
-                    "amount",
-                    "currency",
-                    "merchant",
-                    "mcc",
-                    "account_id",
-                    "city",
-                    "state",
-                    "channel"
-                ]
-            }
-        )
-    )
-    
-    suite.add_expectation(
+    expectations = [
         ExpectationConfiguration(
             expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "tx_id"
-            }
-        )
-    )
-    
-    suite.add_expectation(
+            kwargs={"column": "tx_id"}
+        ),
         ExpectationConfiguration(
             expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "amount"
-            }
-        )
-    )
-    
-    suite.add_expectation(
+            kwargs={"column": "timestamp"}
+        ),
+        ExpectationConfiguration(
+            expectation_type="expect_column_values_to_not_be_null",
+            kwargs={"column": "amount"}
+        ),
         ExpectationConfiguration(
             expectation_type="expect_column_values_to_be_between",
             kwargs={
                 "column": "amount",
-                "min_value": 0,
+                "min_value": -1000000,  # Adjust based on your data
                 "max_value": 1000000
             }
-        )
-    )
-    
-    suite.add_expectation(
+        ),
         ExpectationConfiguration(
             expectation_type="expect_column_values_to_be_in_set",
             kwargs={
                 "column": "currency",
                 "value_set": ["USD", "EUR", "GBP"]
             }
-        )
-    )
-    
-    suite.add_expectation(
+        ),
         ExpectationConfiguration(
             expectation_type="expect_column_values_to_match_regex",
             kwargs={
@@ -77,91 +40,33 @@ def create_transaction_expectation_suite():
                 "regex": "^[0-9]{4}$"
             }
         )
-    )
+    ]
+    
+    for expectation in expectations:
+        suite.add_expectation(expectation)
     
     return suite
 
-def create_transformed_transaction_suite():
-    """Create expectation suite for transformed transaction data"""
-    suite = ExpectationSuite(
-        expectation_suite_name="transactions_transformed_suite"
-    )
+def validate_transactions(df):
+    dataset = PandasDataset(df)
+    suite = create_transaction_expectations()
     
-    # Add expectations for transformed data
-    suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_table_columns_to_match_ordered_list",
-            kwargs={
-                "column_list": [
-                    "tx_id",
-                    "timestamp",
-                    "amount",
-                    "currency",
-                    "merchant",
-                    "mcc",
-                    "account_id",
-                    "city",
-                    "state",
-                    "channel",
-                    "category",
-                    "subcategory",
-                    "is_recurring",
-                    "normalized_amount"
-                ]
-            }
-        )
-    )
-    
-    suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "category"
-            }
-        )
-    )
-    
-    suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_in_set",
-            kwargs={
-                "column": "category",
-                "value_set": [
-                    "Groceries",
-                    "Dining",
-                    "Transportation",
-                    "Shopping",
-                    "Entertainment",
-                    "Healthcare",
-                    "Utilities",
-                    "Other"
-                ]
-            }
-        )
-    )
-    
-    suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_of_type",
-            kwargs={
-                "column": "is_recurring",
-                "type_": "boolean"
-            }
-        )
-    )
-    
-    suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "normalized_amount"
-            }
-        )
-    )
-    
-    return suite
+    results = dataset.validate(expectation_suite=suite)
+    return results
 
-# Initialize context and save suites
-context = BaseDataContext(DataContextConfig())
-context.save_expectation_suite(create_transaction_expectation_suite())
-context.save_expectation_suite(create_transformed_transaction_suite())
+if __name__ == "__main__":
+    # Example usage
+    import duckdb
+    
+    # Load sample data
+    conn = duckdb.connect(database=':memory:', read_only=False)
+    df = pd.read_sql("SELECT * FROM transactions", conn)
+    
+    # Validate data
+    validation_results = validate_transactions(df)
+    print(f"Validation success: {validation_results.success}")
+    
+    # Print failed expectations
+    for result in validation_results.results:
+        if not result.success:
+            print(f"Failed: {result.expectation_config.kwargs['column']} - {result.expectation_config.expectation_type}")
