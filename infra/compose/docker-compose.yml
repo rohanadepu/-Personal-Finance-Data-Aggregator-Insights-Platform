@@ -13,12 +13,16 @@ services:
       - AIRFLOW__WEBSERVER__WORKERS=2
       - AIRFLOW_HOME=/opt/airflow
       - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
+      - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+      - SPARK_HOME=/opt/spark
     volumes:
       - ../../airflow/dags:/opt/airflow/dags
-      - ../../spark_jobs:/opt/airflow/spark_jobs
+      - ./spark_jobs:/opt/airflow/spark_jobs
       - ../../data:/opt/airflow/data
       - ../../ml:/opt/airflow/ml
       - airflow_logs:/opt/airflow/logs
+      - ./spark_jobs/jars:/opt/airflow/jars
+      - ../../infra/compose/spark_jobs/jars/hadoop-aws-3.3.1.jar:/opt/airflow/jars/hadoop-aws-3.3.1.jar
     user: "${AIRFLOW_UID:-50000}:0"
     depends_on:
       postgres:
@@ -96,15 +100,15 @@ services:
   # PostgreSQL (for Airflow metadata and data warehouse)
   postgres:
     image: postgres:14
+    ports:
+      - "5432:5432"
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../../sql:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s

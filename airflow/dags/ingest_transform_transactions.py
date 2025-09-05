@@ -23,15 +23,16 @@ dag = DAG(
 )
 
 # Define Spark submit command with full path and debug logging
-spark_submit_cmd = '/home/airflow/.local/bin/spark-submit --verbose ' \
-    '--packages org.apache.hadoop:hadoop-aws:3.3.1 ' \
+spark_submit_cmd = 'spark-submit --verbose ' \
+    '--jars /opt/airflow/jars/hadoop-aws-3.3.1.jar ' \
     '--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 ' \
     '--conf spark.hadoop.fs.s3a.access.key=minioadmin ' \
     '--conf spark.hadoop.fs.s3a.secret.key=minioadmin ' \
     '--conf spark.hadoop.fs.s3a.path.style.access=true ' \
     '--conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem ' \
     '--conf spark.driver.extraJavaOptions=-Dcom.amazonaws.services.s3.enableV4=true ' \
-    '--conf spark.executor.extraJavaOptions=-Dcom.amazonaws.services.s3.enableV4=true'
+    '--conf spark.executor.extraJavaOptions=-Dcom.amazonaws.services.s3.enableV4=true ' \
+    '--conf spark.jars=/opt/airflow/jars/hadoop-aws-3.3.1.jar'
 
 # Add logging task to check environment
 def check_environment(**context):
