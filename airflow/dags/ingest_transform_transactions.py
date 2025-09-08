@@ -22,17 +22,12 @@ dag = DAG(
     catchup=False,
 )
 
-# Define Spark submit command with full path and debug logging
-spark_submit_cmd = 'spark-submit --verbose ' \
-    '--jars /opt/airflow/jars/hadoop-aws-3.3.1.jar ' \
-    '--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 ' \
-    '--conf spark.hadoop.fs.s3a.access.key=minioadmin ' \
-    '--conf spark.hadoop.fs.s3a.secret.key=minioadmin ' \
-    '--conf spark.hadoop.fs.s3a.path.style.access=true ' \
-    '--conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem ' \
-    '--conf spark.driver.extraJavaOptions=-Dcom.amazonaws.services.s3.enableV4=true ' \
-    '--conf spark.executor.extraJavaOptions=-Dcom.amazonaws.services.s3.enableV4=true ' \
-    '--conf spark.jars=/opt/airflow/jars/hadoop-aws-3.3.1.jar'
+# Install PySpark and required packages first
+install_deps = BashOperator(
+    task_id='install_dependencies',
+    bash_command='pip install pyspark==3.5.0 boto3==1.28.85',
+    dag=dag,
+)
 
 # Add logging task to check environment
 def check_environment(**context):
@@ -42,7 +37,6 @@ def check_environment(**context):
     logging.info(f"JAVA_HOME: {os.getenv('JAVA_HOME')}")
     logging.info("Listing directory contents:")
     os.system('ls -la /opt/airflow/spark_jobs/')
-    os.system('ls -la /opt/airflow/spark_jobs/jars/')
 
 check_env = PythonOperator(
     task_id='check_environment',
@@ -50,17 +44,17 @@ check_env = PythonOperator(
     dag=dag,
 )
 
-# Ingest raw transactions with debug logging
+# Ingest raw transactions using python directly
 ingest_transactions = BashOperator(
     task_id='ingest_transactions',
-    bash_command=f'{spark_submit_cmd} /opt/airflow/spark_jobs/ingest_transactions.py 2>&1 | tee /opt/airflow/logs/spark_ingest.log',
+    bash_command='cd /opt/airflow/spark_jobs && python ingest_transactions.py 2>&1 | tee /opt/airflow/logs/spark_ingest.log',
     dag=dag,
 )
 
-# Transform transactions with debug logging
+# Transform transactions using python directly  
 transform_transactions = BashOperator(
     task_id='transform_transactions',
-    bash_command=f'{spark_submit_cmd} /opt/airflow/spark_jobs/transform_transactions.py 2>&1 | tee /opt/airflow/logs/spark_transform.log',
+    bash_command='cd /opt/airflow/spark_jobs && python transform_transactions.py 2>&1 | tee /opt/airflow/logs/spark_transform.log',
     dag=dag,
 )
 
@@ -71,5 +65,5 @@ load_warehouse = BashOperator(
     dag=dag,
 )
 
-# Define the task dependencies with environment check first
-check_env >> ingest_transactions >> transform_transactions >> load_warehouse
+# Define the task dependencies
+install_deps >> check_env >> ingest_transactions >> transform_transactions >> load_warehouse

@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import col, when, regexp_replace, to_timestamp, count
+from pyspark.sql.functions import col, when, regexp_replace, to_timestamp, count, year, month
 from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml import Pipeline
@@ -12,19 +12,22 @@ logger = logging.getLogger(__name__)
 def create_spark_session():
     return SparkSession.builder \
         .appName("TransactionProcessing") \
-        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.1") \
+        .master("local[*]") \
+        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.11.1034") \
         .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin") \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .config("spark.sql.adaptive.enabled", "true") \
+        .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
         .getOrCreate()
 
 def clean_transactions(df):
     """Clean and standardize transaction data"""
     return df \
         .withColumn("amount", regexp_replace(col("amount"), "[$,]", "").cast("double")) \
-        .withColumn("timestamp", to_timestamp(col("date"))) \
+        .withColumn("timestamp", to_timestamp(col("timestamp"))) \
         .withColumn("normalized_merchant", regexp_replace(col("merchant").lower(), "[^a-z0-9 ]", "")) \
         .dropDuplicates(["tx_id"]) \
         .dropna(subset=["tx_id", "amount", "timestamp"])
@@ -79,7 +82,7 @@ def main():
     try:
         # Read raw transactions from MinIO raw bucket
         logger.info("Reading data from raw bucket")
-        raw_df = spark.read.parquet("s3a://raw/transactions/processed")
+        raw_df = spark.read.csv("s3a://raw/transaction/incoming/sample_transactions.csv", header=True, inferSchema=True)
         logger.info(f"Read {raw_df.count()} transactions from raw bucket")
         
         # Process transactions
@@ -92,6 +95,10 @@ def main():
         
         processed_df = processed_df.transform(detect_recurring_transactions)
         logger.info("Completed recurring transaction detection")
+        
+        # Add partitioning columns
+        processed_df = processed_df.withColumn("year", year("timestamp")) \
+                                   .withColumn("month", month("timestamp"))
         
         # Write processed data to MinIO curated bucket
         logger.info("Writing processed data to curated bucket")
