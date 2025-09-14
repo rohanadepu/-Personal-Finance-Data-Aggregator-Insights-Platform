@@ -142,6 +142,9 @@ services:
       - "8501:8501"
     volumes:
       - ../../dashboards:/app
+      - shared_data:/shared_data
+    environment:
+      - DUCKDB_PATH=/shared_data/finance_analytics.duckdb
     depends_on:
       - postgres
       - mlflow
@@ -150,3 +153,4 @@ volumes:
   postgres_data:
   minio_data:
   airflow_logs:
+  shared_data:
